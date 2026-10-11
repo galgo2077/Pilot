@@ -48,7 +48,8 @@ fn agent_status_uses_bounded_buffered_activity() {
         },
     ));
 
-    let preview = AgentStatusThreadPreview::from_store("/root/reviewer".to_string(), &store);
+    let preview =
+        AgentStatusThreadPreview::from_store("/root/reviewer".to_string(), None, None, &store);
     let cell = AgentStatusHistoryCell::new(vec![preview]);
     let rendered = cell
         .display_lines(/*width*/ 80)
@@ -61,7 +62,7 @@ fn agent_status_uses_bounded_buffered_activity() {
     /subagents
     Sub-agents running
 
-      • `/root/reviewer`
+      • `/root/reviewer` [IDLE]
         $ cargo test -p codex-tui
         Finished checking the focused TUI tests.
     "###);
@@ -96,7 +97,8 @@ fn agent_status_uses_reasoning_summaries_only() {
         },
     ));
 
-    let preview = AgentStatusThreadPreview::from_store("/root/reviewer".to_string(), &store);
+    let preview =
+        AgentStatusThreadPreview::from_store("/root/reviewer".to_string(), None, None, &store);
     let cell = AgentStatusHistoryCell::new(vec![preview]);
     let rendered = cell
         .display_lines(/*width*/ 80)
@@ -109,9 +111,28 @@ fn agent_status_uses_reasoning_summaries_only() {
     /subagents
     Sub-agents running
 
-      • `/root/reviewer`
+      • `/root/reviewer` [IDLE]
         safe summary
     "###);
     assert!(!rendered.contains("hidden raw reasoning"));
     assert!(!rendered.contains("raw-only reasoning"));
+}
+
+#[test]
+fn agent_status_uses_live_turn_state() {
+    let mut store = ThreadEventStore::new(/*capacity*/ 4);
+    store.set_active_turn_id("turn-1".to_string());
+    let preview = AgentStatusThreadPreview::from_store(
+        "/root/worker".to_string(),
+        Some("Sage".to_string()),
+        Some("reviewer".to_string()),
+        &store,
+    );
+    let rendered = AgentStatusHistoryCell::new(vec![preview])
+        .display_lines(/*width*/ 80)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("/root/worker (Sage [reviewer])` [WORKING]"));
 }

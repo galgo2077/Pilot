@@ -4,6 +4,7 @@ use super::ThreadBufferedEvent;
 use super::ThreadEventStore;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::plain_lines;
+use crate::multi_agents::format_agent_picker_item_name;
 use crate::style::accent_color;
 use crate::text_formatting::truncate_text;
 use codex_app_server_protocol::CollabAgentTool;
@@ -66,20 +67,48 @@ impl HistoryCell for AgentStatusHistoryCell {
 #[derive(Debug)]
 pub(super) struct AgentStatusThreadPreview {
     agent_path: String,
+    agent_nickname: Option<String>,
+    agent_role: Option<String>,
     activity: Vec<String>,
+    working: bool,
 }
 
 impl AgentStatusThreadPreview {
-    pub(super) fn from_store(agent_path: String, store: &ThreadEventStore) -> Self {
-        Self::from_events(agent_path, store.buffer.iter().rev())
+    pub(super) fn from_store(
+        agent_path: String,
+        agent_nickname: Option<String>,
+        agent_role: Option<String>,
+        store: &ThreadEventStore,
+    ) -> Self {
+        Self::from_events(
+            agent_path,
+            agent_nickname,
+            agent_role,
+            store.active_turn_id.is_some(),
+            store.buffer.iter().rev(),
+        )
     }
 
-    pub(super) fn empty(agent_path: String) -> Self {
-        Self::from_events(agent_path, std::iter::empty())
+    pub(super) fn empty(
+        agent_path: String,
+        agent_nickname: Option<String>,
+        agent_role: Option<String>,
+        working: bool,
+    ) -> Self {
+        Self::from_events(
+            agent_path,
+            agent_nickname,
+            agent_role,
+            working,
+            std::iter::empty(),
+        )
     }
 
     fn from_events<'a>(
         agent_path: String,
+        agent_nickname: Option<String>,
+        agent_role: Option<String>,
+        working: bool,
         events: impl Iterator<Item = &'a ThreadBufferedEvent>,
     ) -> Self {
         let mut seen_item_ids = HashSet::new();
@@ -98,24 +127,38 @@ impl AgentStatusThreadPreview {
             if !seen_item_ids.insert(item.id().to_string()) {
                 continue;
             }
-            if let Some(summary) = activity_summary(item) {
+            if activity.len() < AGENT_STATUS_PREVIEW_ITEMS
+                && let Some(summary) = activity_summary(item)
+            {
                 activity.push(summary);
-                if activity.len() == AGENT_STATUS_PREVIEW_ITEMS {
-                    break;
-                }
             }
         }
         activity.reverse();
         Self {
             agent_path,
+            agent_nickname,
+            agent_role,
             activity,
+            working,
         }
     }
 
     fn title_line(&self) -> Line<'static> {
+        let status = if self.working { "WORKING" } else { "IDLE" };
+        let label = (self.agent_nickname.is_some() || self.agent_role.is_some()).then(|| {
+            format!(
+                " ({})",
+                format_agent_picker_item_name(
+                    self.agent_nickname.as_deref(),
+                    self.agent_role.as_deref(),
+                    false,
+                )
+            )
+        });
         vec![
             "  • ".dim(),
-            format!("`{}`", self.agent_path).fg(accent_color()),
+            format!("`{}{}`", self.agent_path, label.unwrap_or_default()).fg(accent_color()),
+            format!(" [{status}]").dim(),
         ]
         .into()
     }

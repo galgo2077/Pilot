@@ -105,6 +105,7 @@ const NOTIFICATIONS_TO_OPT_OUT: &[&str] = &[
 ];
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_GRACEFUL_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const APP_SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_ANALYTICS_ENABLED: bool = true;
 const OTEL_SERVICE_NAME: &str = "codex-app-server-test-client";
 const TRACE_DISABLED_MESSAGE: &str =
@@ -648,12 +649,41 @@ fn serve(codex_bin: &Path, config_overrides: &[String], listen: &str, kill: bool
 
     let pid = child.id();
 
+    wait_for_listener(listen, APP_SERVER_STARTUP_TIMEOUT).with_context(|| {
+        format!(
+            "app-server did not listen before startup timeout; inspect {}",
+            log_path.display()
+        )
+    })?;
+
     println!("started codex app-server");
     println!("listen: {listen}");
     println!("pid: {pid} (launcher process)");
     println!("log: {}", log_path.display());
 
     Ok(())
+}
+
+fn wait_for_listener(listen: &str, timeout: Duration) -> Result<()> {
+    let url = Url::parse(listen).with_context(|| format!("invalid --listen URL `{listen}`"))?;
+    let host = url
+        .host_str()
+        .with_context(|| format!("unable to infer host from --listen URL `{listen}`"))?;
+    let port = url
+        .port_or_known_default()
+        .with_context(|| format!("unable to infer port from --listen URL `{listen}`"))?;
+    let address = format!("{host}:{port}");
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        if TcpStream::connect(&address).is_ok() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!("timed out waiting for {address}");
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn kill_listeners_on_same_port(listen: &str) -> Result<()> {

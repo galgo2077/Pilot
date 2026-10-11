@@ -52,6 +52,7 @@ use core_test_support::responses::strip_response_item_ids_from_json;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::local_requests;
+use core_test_support::test_codex::run_test_with_large_stack;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
@@ -1468,8 +1469,21 @@ enum FullHistoryV2ModelSelection {
 #[test_case(FullHistoryV2ModelSelection::CurrentTimeReminders; "full fork drops inherited current-time reminders")]
 #[test_case(FullHistoryV2ModelSelection::MultiAgentModeInstructions; "full fork drops inherited multi-agent mode instructions")]
 #[test_case(FullHistoryV2ModelSelection::MultiAgentModeTransitions; "full fork restores explicit policy after proactive transition")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_context(
+fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_context(
+    selection: FullHistoryV2ModelSelection,
+) -> Result<()> {
+    run_test_with_large_stack(
+        "spawned_full_history_v2_child_uses_model_precedence_without_dropping_context",
+        move || async move {
+            spawned_full_history_v2_child_uses_model_precedence_without_dropping_context_body(
+                selection,
+            )
+            .await
+        },
+    )
+}
+
+async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_context_body(
     selection: FullHistoryV2ModelSelection,
 ) -> Result<()> {
     skip_if_no_network!(Ok(()));

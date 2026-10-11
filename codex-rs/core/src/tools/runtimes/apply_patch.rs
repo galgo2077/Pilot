@@ -4,6 +4,7 @@
 //! selected turn environment filesystem for both local and remote turns, with
 //! sandboxing enforced by the explicit filesystem sandbox context.
 use crate::exec::is_likely_sandbox_denied;
+use crate::project_notes::sync_project_notes;
 use crate::session::turn_context::TurnEnvironment;
 use crate::tools::sandboxing::Approvable;
 use crate::tools::sandboxing::ApprovalAction;
@@ -228,6 +229,17 @@ impl ToolRuntime<ApplyPatchRequest, ApplyPatchRuntimeOutput> for ApplyPatchRunti
             }
         }
         self.committed_delta.append(delta);
+        if !failed && !req.turn_environment.environment.is_remote() {
+            let changed_paths = self
+                .committed_delta
+                .changes()
+                .iter()
+                .map(|change| change.path.to_path_buf())
+                .collect::<Vec<_>>();
+            if let Err(error) = sync_project_notes(&req.action.cwd.to_path_buf(), &changed_paths) {
+                tracing::warn!(%error, "failed to synchronize project notes");
+            }
+        }
         let output = ExecToolCallOutput {
             exit_code,
             stdout: StreamOutput::new(stdout.clone()),

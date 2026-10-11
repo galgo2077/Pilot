@@ -19,6 +19,7 @@ use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
+use core_test_support::test_codex::run_test_with_large_stack;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
@@ -128,8 +129,7 @@ async fn submit_turn(
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn ultra_reasoning_uses_highest_non_ultra_and_proactive_mode() -> Result<()> {
+async fn ultra_reasoning_uses_highest_non_ultra_and_proactive_mode_body() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -164,10 +164,7 @@ async fn ultra_reasoning_uses_highest_non_ultra_and_proactive_mode() -> Result<(
     Ok(())
 }
 
-#[test_case(ModeHintSource::ConfiguredHint; "configured hint overrides catalog")]
-#[test_case(ModeHintSource::CatalogHint; "catalog hint overrides reasoning effort")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn mode_hints_override_reasoning_effort(source: ModeHintSource) -> Result<()> {
+async fn mode_hints_override_reasoning_effort_body(source: ModeHintSource) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -228,13 +225,7 @@ async fn mode_hints_override_reasoning_effort(source: ModeHintSource) -> Result<
     Ok(())
 }
 
-#[test_case(ReasoningEffort::Ultra, Some(CATALOG_PROACTIVE_TEXT), Some(CATALOG_PROACTIVE_TEXT); "ultra uses proactive override")]
-#[test_case(ReasoningEffort::High, Some(CATALOG_PROACTIVE_TEXT), Some(CATALOG_EXPLICIT_TEXT); "non ultra ignores proactive override")]
-#[test_case(ReasoningEffort::Ultra, None, Some(PROACTIVE_TEXT); "ultra falls back to built in")]
-#[test_case(ReasoningEffort::Ultra, Some(""), None; "empty proactive suppresses ultra mode")]
-#[test_case(ReasoningEffort::High, Some(""), Some(CATALOG_EXPLICIT_TEXT); "empty proactive leaves non ultra unchanged")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn catalog_proactive_mode_is_ultra_only(
+async fn catalog_proactive_mode_applies_at_every_reasoning_effort_body(
     effort: ReasoningEffort,
     proactive: Option<&'static str>,
     expected_hint: Option<&str>,
@@ -281,10 +272,7 @@ async fn catalog_proactive_mode_is_ultra_only(
     Ok(())
 }
 
-#[test_case(ReasoningEffort::High, [CATALOG_EXPLICIT_TEXT, SECOND_MODEL_EXPLICIT_TEXT]; "explicit mode")]
-#[test_case(ReasoningEffort::Ultra, [CATALOG_PROACTIVE_TEXT, SECOND_MODEL_PROACTIVE_TEXT]; "proactive mode")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn model_switch_refreshes_catalog_role_and_mode(
+async fn model_switch_refreshes_catalog_role_and_mode_body(
     effort: ReasoningEffort,
     expected_hints: [&str; 2],
 ) -> Result<()> {
@@ -384,10 +372,9 @@ async fn model_switch_refreshes_catalog_role_and_mode(
     Ok(())
 }
 
-#[test_case(ReasoningEffort::High; "explicit mode")]
-#[test_case(ReasoningEffort::Ultra; "proactive mode")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn empty_configured_mode_hint_emits_no_mode_message(effort: ReasoningEffort) -> Result<()> {
+async fn empty_configured_mode_hint_emits_no_mode_message_body(
+    effort: ReasoningEffort,
+) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -430,8 +417,7 @@ async fn empty_configured_mode_hint_emits_no_mode_message(effort: ReasoningEffor
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn changing_configured_mode_hint_to_empty_emits_no_update() -> Result<()> {
+async fn changing_configured_mode_hint_to_empty_emits_no_update_body() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -479,8 +465,8 @@ async fn changing_configured_mode_hint_to_empty_emits_no_update() -> Result<()> 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn live_mode_change_appends_mode_without_reappending_usage_hint() -> Result<()> {
+async fn live_reasoning_change_retains_proactive_mode_without_reappending_usage_hint_body()
+-> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -535,7 +521,7 @@ async fn live_mode_change_appends_mode_without_reappending_usage_hint() -> Resul
             count_containing(&second_texts, PROACTIVE_TEXT),
             count_containing(&second_texts, NO_SPAWN_TEXT),
         ),
-        (1, 1, 1),
+        (1, 1, 0),
     );
     test.codex.ensure_rollout_materialized().await;
     test.codex.flush_rollout().await?;
@@ -552,16 +538,12 @@ async fn live_mode_change_appends_mode_without_reappending_usage_hint() -> Resul
                 .cloned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        recorded_modes,
-        [json!("proactive"), json!("explicitRequestOnly")]
-    );
+    assert_eq!(recorded_modes, [json!("proactive")]);
 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn leaving_ultra_after_cold_resume_emits_explicit_mode() -> Result<()> {
+async fn leaving_ultra_after_cold_resume_retains_proactive_mode_body() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -612,14 +594,14 @@ async fn leaving_ultra_after_cold_resume_emits_explicit_mode() -> Result<()> {
             count_containing(&texts, NO_SPAWN_TEXT),
             count_containing(&texts, PROACTIVE_TEXT),
         ),
-        (2, 1, 1)
+        (1, 0, 1)
     );
 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instructions() -> Result<()> {
+async fn ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instructions_body()
+-> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -648,4 +630,102 @@ async fn ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instruction
     assert_eq!(count_containing(&texts, MULTI_AGENT_MODE_OPEN_TAG), 0);
 
     Ok(())
+}
+
+#[test]
+fn ultra_reasoning_uses_highest_non_ultra_and_proactive_mode() -> Result<()> {
+    run_test_with_large_stack(
+        "ultra_reasoning_uses_highest_non_ultra_and_proactive_mode",
+        || async { ultra_reasoning_uses_highest_non_ultra_and_proactive_mode_body().await },
+    )
+}
+
+#[test_case(ModeHintSource::ConfiguredHint; "configured hint overrides catalog")]
+#[test_case(ModeHintSource::CatalogHint; "catalog hint overrides reasoning effort")]
+fn mode_hints_override_reasoning_effort(source: ModeHintSource) -> Result<()> {
+    run_test_with_large_stack("mode_hints_override_reasoning_effort", move || async move {
+        mode_hints_override_reasoning_effort_body(source).await
+    })
+}
+
+#[test_case(ReasoningEffort::Ultra, Some(CATALOG_PROACTIVE_TEXT), Some(CATALOG_PROACTIVE_TEXT); "ultra uses proactive override")]
+#[test_case(ReasoningEffort::High, Some(CATALOG_PROACTIVE_TEXT), Some(CATALOG_PROACTIVE_TEXT); "ordinary effort uses proactive override")]
+#[test_case(ReasoningEffort::High, None, Some(PROACTIVE_TEXT); "ordinary effort falls back to built in")]
+#[test_case(ReasoningEffort::Ultra, Some(""), None; "empty proactive suppresses ultra mode")]
+#[test_case(ReasoningEffort::High, Some(""), None; "empty proactive suppresses ordinary mode")]
+fn catalog_proactive_mode_applies_at_every_reasoning_effort(
+    effort: ReasoningEffort,
+    catalog_proactive: Option<&'static str>,
+    expected: Option<&'static str>,
+) -> Result<()> {
+    run_test_with_large_stack(
+        "catalog_proactive_mode_applies_at_every_reasoning_effort",
+        move || async move {
+            catalog_proactive_mode_applies_at_every_reasoning_effort_body(
+                effort,
+                catalog_proactive,
+                expected,
+            )
+            .await
+        },
+    )
+}
+
+#[test_case(ReasoningEffort::High, [CATALOG_PROACTIVE_TEXT, SECOND_MODEL_PROACTIVE_TEXT]; "ordinary proactive mode")]
+#[test_case(ReasoningEffort::Ultra, [CATALOG_PROACTIVE_TEXT, SECOND_MODEL_PROACTIVE_TEXT]; "proactive mode")]
+fn model_switch_refreshes_catalog_role_and_mode(
+    effort: ReasoningEffort,
+    expected_modes: [&'static str; 2],
+) -> Result<()> {
+    run_test_with_large_stack(
+        "model_switch_refreshes_catalog_role_and_mode",
+        move || async move {
+            model_switch_refreshes_catalog_role_and_mode_body(effort, expected_modes).await
+        },
+    )
+}
+
+#[test_case(ReasoningEffort::High; "explicit mode")]
+#[test_case(ReasoningEffort::Ultra; "proactive mode")]
+fn empty_configured_mode_hint_emits_no_mode_message(effort: ReasoningEffort) -> Result<()> {
+    run_test_with_large_stack(
+        "empty_configured_mode_hint_emits_no_mode_message",
+        move || async move { empty_configured_mode_hint_emits_no_mode_message_body(effort).await },
+    )
+}
+
+#[test]
+fn changing_configured_mode_hint_to_empty_emits_no_update() -> Result<()> {
+    run_test_with_large_stack(
+        "changing_configured_mode_hint_to_empty_emits_no_update",
+        || async { changing_configured_mode_hint_to_empty_emits_no_update_body().await },
+    )
+}
+
+#[test]
+fn live_reasoning_change_retains_proactive_mode_without_reappending_usage_hint() -> Result<()> {
+    run_test_with_large_stack(
+        "live_reasoning_change_retains_proactive_mode_without_reappending_usage_hint",
+        || async {
+            live_reasoning_change_retains_proactive_mode_without_reappending_usage_hint_body().await
+        },
+    )
+}
+
+#[test]
+fn leaving_ultra_after_cold_resume_retains_proactive_mode() -> Result<()> {
+    run_test_with_large_stack(
+        "leaving_ultra_after_cold_resume_retains_proactive_mode",
+        || async { leaving_ultra_after_cold_resume_retains_proactive_mode_body().await },
+    )
+}
+
+#[test]
+fn ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instructions() -> Result<()> {
+    run_test_with_large_stack(
+        "ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instructions",
+        || async {
+            ultra_on_multi_agent_v1_uses_highest_non_ultra_without_mode_instructions_body().await
+        },
+    )
 }

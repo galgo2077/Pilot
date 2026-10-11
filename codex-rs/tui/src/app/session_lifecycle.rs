@@ -82,24 +82,40 @@ impl App {
                     if !entry.is_running || entry.is_closed {
                         return None;
                     }
-                    Some((thread_id, entry.agent_path.as_deref()?.trim().to_string()))
+                    Some((
+                        thread_id,
+                        entry.agent_path.as_deref()?.trim().to_string(),
+                        entry.agent_nickname.clone(),
+                        entry.agent_role.clone(),
+                    ))
                 })
                 .collect();
             let mut entries = Vec::new();
-            for (thread_id, agent_path) in running_threads {
+            for (thread_id, agent_path, agent_nickname, agent_role) in running_threads {
                 let preview = if let Some(channel) = self.thread_event_channels.get(&thread_id) {
                     match channel.store.try_lock() {
                         Ok(store) => {
                             super::agent_status_feed::AgentStatusThreadPreview::from_store(
-                                agent_path, &store,
+                                agent_path,
+                                agent_nickname.clone(),
+                                agent_role.clone(),
+                                &store,
                             )
                         }
-                        Err(_) => {
-                            super::agent_status_feed::AgentStatusThreadPreview::empty(agent_path)
-                        }
+                        Err(_) => super::agent_status_feed::AgentStatusThreadPreview::empty(
+                            agent_path,
+                            agent_nickname.clone(),
+                            agent_role.clone(),
+                            true,
+                        ),
                     }
                 } else {
-                    super::agent_status_feed::AgentStatusThreadPreview::empty(agent_path)
+                    super::agent_status_feed::AgentStatusThreadPreview::empty(
+                        agent_path,
+                        agent_nickname,
+                        agent_role,
+                        true,
+                    )
                 };
                 entries.push(preview);
             }
